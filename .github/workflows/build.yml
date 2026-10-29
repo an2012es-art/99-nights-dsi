@@ -2,23 +2,20 @@
 name: Build 99 Nights DSi
 
 on:
-  workflow_dispatch:
   push:
     branches: [main, master]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     container: devkitpro/devkitarm:latest
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Nintendo DS libraries
-        run: |
-          pacman -Sy --noconfirm
-          pacman -S --noconfirm --needed nds-dev
-
       - name: Build game
+        shell: bash
         run: |
           export DEVKITPRO=/opt/devkitpro
           export DEVKITARM=$DEVKITPRO/devkitARM
