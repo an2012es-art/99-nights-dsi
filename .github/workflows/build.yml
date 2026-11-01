@@ -1,4 +1,3 @@
-
 name: Build NDS
 
 on:
@@ -17,18 +16,21 @@ jobs:
         shell: bash
         run: |
           set -e
-          T=$(find /opt/devkitpro/examples/nds -type d -name hello_world | head -1)
-          test -n "$T"
-          mkdir -p /tmp/proj
-          cp -r "$T"/. /tmp/proj/
-          rm -f /tmp/proj/source/*
-          cp "$GITHUB_WORKSPACE/main.c" /tmp/proj/source/main.c
-          cd /tmp/proj
-          make
-          cp ./*.nds "$GITHUB_WORKSPACE/minish_quest.nds"
+          export DEVKITPRO=/opt/devkitpro
+          export DEVKITARM=$DEVKITPRO/devkitARM
+          export PATH=$DEVKITARM/bin:$DEVKITPRO/tools/bin:$PATH
+          SRC=$(find . -name '*.c' -not -path './build/*')
+          echo "Compiling: $SRC"
+          arm-none-eabi-gcc -g -Wall -O2 \
+            -march=armv5te -mtune=arm946e-s -DARM9 \
+            -I$DEVKITPRO/libnds/include \
+            $SRC \
+            -specs=ds_arm9.specs \
+            -L$DEVKITPRO/libnds/lib -lnds9 \
+            -o game.elf
+          ndstool -c 99NightsDSi.nds -9 game.elf
 
       - uses: actions/upload-artifact@v4
         with:
-          name: minish_quest
-          path: minish_quest.nds
-          
+          name: 99NightsDSi
+          path: 99NightsDSi.nds
