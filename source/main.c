@@ -9,31 +9,30 @@
 #define MAP_H 12
 #define TILE 16
 
-typedef unsigned short u16;
-#define RGB15(r,g,b) ((r) | ((g)<<5) | ((b)<<10) | BIT(15))
+#define RGB(r,g,b) ((u16)((r) | ((g)<<5) | ((b)<<10) | BIT(15)))
 
 static u16 *fb = (u16*)0x06000000;
 
-static const u16 C_BLACK = RGB15(1,1,2);
-static const u16 C_DARK  = RGB15(3,8,5);
-static const u16 C_GRASS = RGB15(4,15,6);
-static const u16 C_GRASS2= RGB15(5,19,8);
-static const u16 C_TREE  = RGB15(2,10,3);
-static const u16 C_BROWN = RGB15(15,8,3);
-static const u16 C_WOOD  = RGB15(22,13,5);
-static const u16 C_SKIN  = RGB15(26,17,12);
-static const u16 C_BLUE  = RGB15(5,12,27);
-static const u16 C_RED   = RGB15(26,3,3);
-static const u16 C_WHITE = RGB15(29,29,27);
-static const u16 C_YELL  = RGB15(30,22,3);
-static const u16 C_ORANGE= RGB15(31,10,1);
-static const u16 C_PURPLE= RGB15(16,4,22);
-static const u16 C_GREY  = RGB15(13,15,15);
+static const u16 C_BLACK = RGB(1,1,2);
+static const u16 C_DARK  = RGB(3,8,5);
+static const u16 C_GRASS = RGB(4,15,6);
+static const u16 C_GRASS2= RGB(5,19,8);
+static const u16 C_TREE  = RGB(2,10,3);
+static const u16 C_BROWN = RGB(15,8,3);
+static const u16 C_WOOD  = RGB(22,13,5);
+static const u16 C_SKIN  = RGB(26,17,12);
+static const u16 C_BLUE  = RGB(5,12,27);
+static const u16 C_RED   = RGB(26,3,3);
+static const u16 C_YELL  = RGB(30,22,3);
+static const u16 C_ORANGE= RGB(31,10,1);
+static const u16 C_PURPLE= RGB(16,4,22);
+static const u16 C_GREY  = RGB(13,15,15);
 
 static int px=2, py=2, wood=0, rescued=0, day=1, ticks=0;
 static int fire=0, shelter=0, fence=0, weapon=0, lamp=1, alive=1;
 static int monsterX=13, monsterY=8;
-static char world[MAP_H][MAP_W+1] = {
+
+static const char initial_world[MAP_H][MAP_W+1] = {
  "################",
  "#..T....#.....C#",
  "#.......#......#",
@@ -47,7 +46,12 @@ static char world[MAP_H][MAP_W+1] = {
  "#..............#",
  "################"
 };
-static char message[72]="Chop trees, rescue children, survive the night!";
+static char world[MAP_H][MAP_W+1];
+static char message[72] = "Chop trees, rescue children, survive the night!";
+
+static void say(const char *s) {
+    snprintf(message, sizeof(message), "%s", s);
+}
 
 static void rect(int x,int y,int w,int h,u16 c) {
     if(x<0||y<0||x+w>SCREEN_W||y+h>SCREEN_H) return;
@@ -77,19 +81,14 @@ static void draw_child(int x,int y) {
 }
 static void draw_player(int x,int y) {
     int sx=x*TILE, sy=y*TILE;
-    /* backpack */
     rect(sx+3,sy+7,3,6,C_BROWN);
-    /* head/hair */
     rect(sx+6,sy+2,6,6,C_SKIN);
     rect(sx+5,sy+1,8,3,C_BROWN);
     pixel(sx+7,sy+5,C_BLACK); pixel(sx+10,sy+5,C_BLACK);
-    /* jacket and arms */
     rect(sx+5,sy+8,8,6,C_BLUE);
     rect(sx+3,sy+9,2,5,C_SKIN); rect(sx+13,sy+9,2,5,C_SKIN);
-    /* legs and boots */
     rect(sx+6,sy+14,3,2,C_GREY); rect(sx+10,sy+14,3,2,C_GREY);
     rect(sx+5,sy+15,4,1,C_BLACK); rect(sx+10,sy+15,4,1,C_BLACK);
-    /* lamp glow if enabled */
     if(lamp && ticks>=45) {
         for(int r=1;r<4;r++) {
             pixel(sx+15+r,sy+9,C_YELL);
@@ -99,10 +98,8 @@ static void draw_player(int x,int y) {
 }
 static void draw_monster(int x,int y) {
     int sx=x*TILE, sy=y*TILE;
-    /* antler silhouette */
     rect(sx+2,sy+1,2,5,C_GREY); rect(sx+1,sy+1,4,2,C_GREY);
     rect(sx+12,sy+1,2,5,C_GREY); rect(sx+11,sy+1,4,2,C_GREY);
-    /* dark body and head */
     rect(sx+4,sy+4,8,8,C_BLACK);
     rect(sx+3,sy+3,10,6,C_DARK);
     rect(sx+5,sy+6,2,2,C_RED); rect(sx+10,sy+6,2,2,C_RED);
@@ -122,7 +119,7 @@ static void draw_house(int x,int y) {
     rect(sx+5,sy+10,4,5,C_BLACK);
 }
 static void draw_world(void) {
-    u16 bg = (ticks>=45) ? RGB15(1,2,7) : C_GRASS;
+    u16 bg = (ticks>=45) ? RGB(1,2,7) : C_GRASS;
     clear_screen(bg);
     for(int y=0;y<MAP_H;y++) for(int x=0;x<MAP_W;x++) {
         int sx=x*TILE, sy=y*TILE;
@@ -131,7 +128,7 @@ static void draw_world(void) {
             rect(sx,sy,TILE,TILE,C_TREE);
             rect(sx+1,sy+1,14,14,C_DARK);
         } else {
-            rect(sx,sy,TILE,TILE, ( (x+y)%2 ) ? C_GRASS : C_GRASS2);
+            rect(sx,sy,TILE,TILE, ((x+y)%2) ? C_GRASS : C_GRASS2);
             pixel(sx+2,sy+12,C_GRASS); pixel(sx+13,sy+4,C_GRASS);
             if(c=='T') draw_tree(x,y);
             if(c=='C') draw_child(x,y);
@@ -149,24 +146,25 @@ static void draw_world(void) {
 static bool walkable(int x,int y) {
     return x>0 && x<MAP_W-1 && y>0 && y<MAP_H-1 && world[y][x]!='#';
 }
-static int abs_i(int v){return v<0?-v:v;}
+static int abs_i(int v){ return v<0 ? -v : v; }
+
 static void interact(void) {
     if(world[py][px]=='T') {
         world[py][px]='.'; wood+=2;
-        snprintf(message,sizeof(message),"Chopped tree: +2 wood.");
+        say("Chopped tree: +2 wood.");
     } else if(world[py][px]=='C') {
         world[py][px]='.'; rescued++;
         snprintf(message,sizeof(message),"Child rescued! (%d/3)",rescued);
-    } else snprintf(message,sizeof(message),"Nothing here. Stand on tree or child.");
+    } else say("Nothing here. Stand on tree or child.");
 }
 static void build(void) {
-    if(!shelter && wood>=4) { wood-=4; shelter=1; snprintf(message,sizeof(message),"Shelter built!"); }
-    else if(!fence && wood>=3) { wood-=3; fence=1; snprintf(message,sizeof(message),"Fence built!"); }
-    else snprintf(message,sizeof(message),"Need 4 wood for shelter, then 3 for fence.");
+    if(!shelter && wood>=4) { wood-=4; shelter=1; say("Shelter built!"); }
+    else if(!fence && wood>=3) { wood-=3; fence=1; say("Fence built!"); }
+    else say("Need 4 wood for shelter, then 3 for fence.");
 }
 static void light_fire(void) {
-    if(!fire && wood>=3) { wood-=3; fire=1; snprintf(message,sizeof(message),"Campfire is burning!"); }
-    else snprintf(message,sizeof(message), fire?"Campfire already lit.":"Need 3 wood for fire.");
+    if(!fire && wood>=3) { wood-=3; fire=1; say("Campfire is burning!"); }
+    else say(fire ? "Campfire already lit." : "Need 3 wood for fire.");
 }
 static void monster_update(void) {
     if(ticks<45 || !alive) return;
@@ -175,8 +173,8 @@ static void monster_update(void) {
     if(monsterX<px) monsterX++; else if(monsterX>px) monsterX--;
     if(monsterY<py) monsterY++; else if(monsterY>py) monsterY--;
     if(monsterX==px && monsterY==py) {
-        if(weapon) { weapon=0; monsterX=13; monsterY=8; snprintf(message,sizeof(message),"Spear drove it away!"); }
-        else { alive=0; snprintf(message,sizeof(message),"Caught! Press START to retry."); }
+        if(weapon) { weapon=0; monsterX=13; monsterY=8; say("Spear drove it away!"); }
+        else { alive=0; say("Caught! Press START to retry."); }
     }
 }
 static void draw_ui(void) {
@@ -191,35 +189,61 @@ static void draw_ui(void) {
     iprintf("%s\n",message);
     if(rescued>=3) iprintf("All children rescued! Survive!\n");
 }
+static void reset_game(void) {
+    memcpy(world, initial_world, sizeof(world));
+    px=2; py=2; wood=0; rescued=0; day=1; ticks=0;
+    fire=0; shelter=0; fence=0; weapon=0; lamp=1; alive=1;
+    monsterX=13; monsterY=8;
+}
+
 int main(void) {
-    videoSetMode(MODE_5_2D);
+    videoSetMode(MODE_5_2D | DISPLAY_BG2_ACTIVE);
     vramSetBankA(VRAM_A_MAIN_BG);
-    REG_DISPCNT = MODE_5_2D | DISPLAY_BG2_ACTIVE;
-    BG2_CR = BG_BMP16_256x256;
+    REG_BG2CNT = BG_BMP16_256x256 | BG_BMP_BASE(0);
+    REG_BG2PA = 1 << 8;
+    REG_BG2PB = 0;
+    REG_BG2PC = 0;
+    REG_BG2PD = 1 << 8;
+    REG_BG2X = 0;
+    REG_BG2Y = 0;
+
     consoleDemoInit();
+    keysSetRepeat(12, 6);
+    reset_game();
+
     while(1) {
         scanKeys();
-        int k=keysDownRepeat();
-        if(!alive && (k&KEY_START)) {
-            px=2;py=2;wood=0;rescued=0;day=1;ticks=0;fire=0;shelter=0;fence=0;weapon=0;lamp=1;alive=1;monsterX=13;monsterY=8;
-            for(int y=0;y<MAP_H;y++) for(int x=0;x<MAP_W;x++) if(world[y][x]=='t')world[y][x]='T';
-            snprintf(message,sizeof(message),"New journey. Rescue the children!");
+        int k = keysDownRepeat();
+
+        if(!alive && (k & KEY_START)) {
+            reset_game();
+            say("New journey. Rescue the children!");
         }
         if(alive) {
-            int nx=px,ny=py;
-            if(k&KEY_UP)ny--; if(k&KEY_DOWN)ny++;
-            if(k&KEY_LEFT)nx--; if(k&KEY_RIGHT)nx++;
-            if(walkable(nx,ny)){px=nx;py=ny;}
-            if(k&KEY_A)interact();
-            if(k&KEY_Y)build();
-            if(k&KEY_L)light_fire();
-            if((k&KEY_B)&&!weapon&&wood>=2){wood-=2;weapon=1;snprintf(message,sizeof(message),"Wooden spear crafted!");}
-            if(k&KEY_X){lamp=!lamp;snprintf(message,sizeof(message),"Flashlight %s",lamp?"ON":"OFF");}
-            if(k&KEY_R)snprintf(message,sizeof(message),rescued==3?"All children rescued!":"Keep searching: %d/3 rescued",rescued);
+            int nx=px, ny=py;
+            if(k & KEY_UP) ny--;
+            if(k & KEY_DOWN) ny++;
+            if(k & KEY_LEFT) nx--;
+            if(k & KEY_RIGHT) nx++;
+            if(walkable(nx,ny)) { px=nx; py=ny; }
+            if(k & KEY_A) interact();
+            if(k & KEY_Y) build();
+            if(k & KEY_L) light_fire();
+            if((k & KEY_B) && !weapon && wood>=2) {
+                wood-=2; weapon=1; say("Wooden spear crafted!");
+            }
+            if(k & KEY_X) {
+                lamp=!lamp;
+                say(lamp ? "Flashlight ON" : "Flashlight OFF");
+            }
+            if(k & KEY_R) {
+                if(rescued==3) say("All children rescued!");
+                else snprintf(message,sizeof(message),"Keep searching: %d/3 rescued",rescued);
+            }
             ticks++;
-            if(ticks>=90){ticks=0;day++;monsterX=13;monsterY=8;}
-            if(ticks==45)snprintf(message,sizeof(message),"NIGHT! The monster is hunting!");
-            if(ticks==0)snprintf(message,sizeof(message),"Morning. Gather wood and explore.");
+            if(ticks>=90) { ticks=0; day++; monsterX=13; monsterY=8; }
+            if(ticks==45) say("NIGHT! The monster is hunting!");
+            if(ticks==0)  say("Morning. Gather wood and explore.");
             monster_update();
         }
         draw_world();
