@@ -19,17 +19,20 @@ jobs:
           export DEVKITARM=$DEVKITPRO/devkitARM
           export PATH=$DEVKITARM/bin:$DEVKITPRO/tools/bin:$PATH
           SRC=$(find . -name '*.c' -not -path './build/*')
-          ARM7=$DEVKITPRO/libnds/basic.elf
-          [ -f "$ARM7" ] || ARM7=$DEVKITPRO/libnds/default.elf
+          ARM7=$(find $DEVKITPRO/calico -name 'ds7*.elf' | head -n 1)
+          [ -n "$ARM7" ] || ARM7=$(find $DEVKITPRO/libnds -name '*.elf' | head -n 1)
           OUT=$( { arm-none-eabi-gcc -g -Wall -O2 \
-            -march=armv5te -mtune=arm946e-s -DARM9 \
+            -march=armv5te -mtune=arm946e-s \
+            -specs=$DEVKITPRO/calico/share/ds9.specs \
+            -D__NDS__ -DARM9 \
+            -I$DEVKITPRO/calico/include \
             -I$DEVKITPRO/libnds/include \
             $SRC \
-            -specs=ds_arm9.specs \
-            -L$DEVKITPRO/libnds/lib -lnds9 \
+            -L$DEVKITPRO/libnds/lib -L$DEVKITPRO/calico/lib \
+            -lnds9 -lcalico_ds9 \
             -o game.elf \
             && ndstool -c 99NightsDSi.nds -9 game.elf -7 "$ARM7"; } 2>&1 ) || {
-              MSG=$(echo "FILES: $SRC ARM7: $ARM7"; echo "$OUT" | grep -iE "error|undefined|no such|cannot|not found|fail" | head -n 12)
+              MSG=$(echo "ARM7: $ARM7"; echo "$OUT" | grep -iE "error|undefined|no such|cannot|not found|fail" | head -n 12)
               MSG="${MSG//$'\n'/%0A}"
               echo "::error::$MSG"
               exit 1
