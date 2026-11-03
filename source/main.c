@@ -1,254 +1,464 @@
+
 #include <nds.h>
-#include <stdio.h>
-#include <stdbool.h>
-#include <string.h>
+#include <stdlib.h>
 
-#define SCREEN_W 256
-#define SCREEN_H 192
-#define MAP_W 16
-#define MAP_H 12
-#define TILE 16
+#define W 256
+#define H 192
+#define C(r,g,b) RGB15(r,g,b)
 
-#define RGB(r,g,b) ((u16)((r) | ((g)<<5) | ((b)<<10) | BIT(15)))
+static u16 *screen = (u16*)0x06000000;
 
-static u16 *fb = (u16*)0x06000000;
+int px=120, py=105;
+int mx=30, my=35;
 
-static const u16 C_BLACK = RGB(1,1,2);
-static const u16 C_DARK  = RGB(3,8,5);
-static const u16 C_GRASS = RGB(4,15,6);
-static const u16 C_GRASS2= RGB(5,19,8);
-static const u16 C_TREE  = RGB(2,10,3);
-static const u16 C_BROWN = RGB(15,8,3);
-static const u16 C_WOOD  = RGB(22,13,5);
-static const u16 C_SKIN  = RGB(26,17,12);
-static const u16 C_BLUE  = RGB(5,12,27);
-static const u16 C_RED   = RGB(26,3,3);
-static const u16 C_YELL  = RGB(30,22,3);
-static const u16 C_ORANGE= RGB(31,10,1);
-static const u16 C_PURPLE= RGB(16,4,22);
-static const u16 C_GREY  = RGB(13,15,15);
+int wood=0;
+int rescued=0;
+int fireFuel=0;
+int shelter=0;
+int flashlight=0;
+int night=0;
+int day=1;
+int timer=0;
+int frame=0;
+int gameOver=0;
 
-static int px=2, py=2, wood=0, rescued=0, day=1, ticks=0;
-static int fire=0, shelter=0, fence=0, weapon=0, lamp=1, alive=1;
-static int monsterX=13, monsterY=8;
+int campX=120, campY=130;
 
-static const char initial_world[MAP_H][MAP_W+1] = {
- "################",
- "#..T....#.....C#",
- "#.......#......#",
- "#..##.......T..#",
- "#..............#",
- "#....T.........#",
- "#..........##..#",
- "#..C...........#",
- "#........T.....#",
- "#......##....C.#",
- "#..............#",
- "################"
+typedef struct {
+    int x,y,alive;
+} Object;
+
+Object trees[7]={
+    {20,30,1},{55,65,1},{220,35,1},
+    {230,125,1},{30,155,1},{180,155,1},
+    {75,115,1}
 };
-static char world[MAP_H][MAP_W+1];
-static char message[72] = "Chop trees, rescue children, survive the night!";
 
-static void say(const char *s) {
-    snprintf(message, sizeof(message), "%s", s);
+Object kids[3]={
+    {210,65,1},{35,90,1},{190,120,1}
+};
+
+void pixel(int x,int y,u16 color)
+{
+    if(x>=0 && x<W && y>=0 && y<H)
+        screen[y*W+x]=color;
 }
 
-static void rect(int x,int y,int w,int h,u16 c) {
-    if(x<0||y<0||x+w>SCREEN_W||y+h>SCREEN_H) return;
-    for(int yy=y; yy<y+h; yy++)
-        for(int xx=x; xx<x+w; xx++) fb[yy*SCREEN_W+xx]=c;
+void rect(int x,int y,int w,int h,u16 color)
+{
+    int i,j;
+    for(j=0;j<h;j++)
+        for(i=0;i<w;i++)
+            pixel(x+i,y+j,color);
 }
-static void pixel(int x,int y,u16 c) {
-    if(x>=0&&x<SCREEN_W&&y>=0&&y<SCREEN_H) fb[y*SCREEN_W+x]=c;
+
+void clearScreen(u16 color)
+{
+    int i;
+    for(i=0;i<W*H;i++)
+        screen[i]=color;
 }
-static void clear_screen(u16 c) {
-    for(int i=0;i<SCREEN_W*SCREEN_H;i++) fb[i]=c;
+
+int nearObject(int x1,int y1,int x2,int y2,int range)
+{
+    return abs(x1-x2)+abs(y1-y2)<range;
 }
-static void draw_tree(int x,int y) {
-    int sx=x*TILE, sy=y*TILE;
-    rect(sx+5,sy+9,6,7,C_BROWN);
-    rect(sx+2,sy+2,12,9,C_TREE);
-    rect(sx+4,sy,8,12,C_GRASS2);
-    pixel(sx+4,sy+4,C_GRASS); pixel(sx+11,sy+3,C_GRASS);
+
+void drawTree(int x,int y)
+{
+    rect(x+7,y+17,7,13,C(12,7,3));
+    rect(x+1,y+8,19,14,C(3,12,5));
+    rect(x+4,y+2,13,12,C(5,18,7));
+    rect(x+7,y-4,8,10,C(7,22,8));
+    pixel(x+6,y+10,C(10,25,9));
 }
-static void draw_child(int x,int y) {
-    int sx=x*TILE, sy=y*TILE;
-    rect(sx+5,sy+3,6,5,C_SKIN);
-    rect(sx+4,sy+2,8,3,C_BROWN);
-    rect(sx+4,sy+8,8,6,C_PURPLE);
-    rect(sx+3,sy+13,4,3,C_BLUE); rect(sx+9,sy+13,4,3,C_BLUE);
-    pixel(sx+6,sy+5,C_BLACK); pixel(sx+10,sy+5,C_BLACK);
+
+void drawForest(void)
+{
+    int x,y;
+
+    clearScreen(night ? C(2,4,9):C(7,18,8));
+
+    for(y=0;y<H;y+=12)
+        for(x=0;x<W;x+=13)
+            if((x*7+y*3)%5==0)
+                pixel(x,y,C(10,24,8));
+
+    /* طريق وسط الغابة */
+    rect(80,0,95,H,C(14,17,10));
+
+    for(x=0;x<7;x++)
+        if(trees[x].alive)
+            drawTree(trees[x].x,trees[x].y);
+
+    /* الكوخ */
+    rect(170,35,55,40,C(15,8,4));
+    rect(164,29,67,10,C(21,11,5));
+    rect(188,49,15,26,C(6,4,3));
+    rect(176,43,10,10,C(31,22,8));
+
+    /* نار المخيم */
+    rect(campX-15,campY+4,30,5,C(12,7,3));
+
+    if(fireFuel>0)
+    {
+        rect(campX-8,campY-8,16,13,C(31,12,1));
+        rect(campX-4,campY-15,8,12,C(31,25,3));
+        pixel(campX,campY-18,C(31,31,12));
+    }
+
+    /* السياج */
+    rect(65,165,125,4,C(19,11,4));
+    rect(70,158,4,12,C(23,14,5));
+    rect(105,158,4,12,C(23,14,5));
+    rect(145,158,4,12,C(23,14,5));
+    rect(185,158,4,12,C(23,14,5));
 }
-static void draw_player(int x,int y) {
-    int sx=x*TILE, sy=y*TILE;
-    rect(sx+3,sy+7,3,6,C_BROWN);
-    rect(sx+6,sy+2,6,6,C_SKIN);
-    rect(sx+5,sy+1,8,3,C_BROWN);
-    pixel(sx+7,sy+5,C_BLACK); pixel(sx+10,sy+5,C_BLACK);
-    rect(sx+5,sy+8,8,6,C_BLUE);
-    rect(sx+3,sy+9,2,5,C_SKIN); rect(sx+13,sy+9,2,5,C_SKIN);
-    rect(sx+6,sy+14,3,2,C_GREY); rect(sx+10,sy+14,3,2,C_GREY);
-    rect(sx+5,sy+15,4,1,C_BLACK); rect(sx+10,sy+15,4,1,C_BLACK);
-    if(lamp && ticks>=45) {
-        for(int r=1;r<4;r++) {
-            pixel(sx+15+r,sy+9,C_YELL);
-            pixel(sx+15+r,sy+10,C_YELL);
+
+void drawPlayer(void)
+{
+    int y=py+(frame%16<8?0:1);
+
+    /* الظل */
+    rect(px-7,y+14,15,3,C(2,2,2));
+
+    /* الأرجل */
+    rect(px-6,y+8,5,8,C(4,5,11));
+    rect(px+2,y+8,5,8,C(4,5,11));
+
+    /* الجسم */
+    rect(px-8,y-4,16,13,C(7,12,22));
+    rect(px-10,y,3,9,C(8,12,20));
+    rect(px+8,y,3,9,C(8,12,20));
+
+    /* الرأس والشعر */
+    rect(px-7,y-16,14,12,C(23,16,11));
+    rect(px-8,y-18,16,5,C(5,5,5));
+    rect(px-5,y-13,10,6,C(25,19,14));
+
+    pixel(px-4,y-10,C(31,31,31));
+    pixel(px+3,y-10,C(31,31,31));
+
+    /* الحقيبة */
+    rect(px+7,y-2,4,8,C(18,10,4));
+
+    if(flashlight)
+        rect(px+9,y-7,5,4,C(31,30,12));
+}
+
+void drawDeer(void)
+{
+    int bob=frame%12<6?1:0;
+    int leg=frame%8<4?3:-3;
+    int y=my+bob;
+
+    /* الظل */
+    rect(mx-14,y+17,28,4,C(1,2,2));
+
+    /* القرون */
+    rect(mx-3,y-31,3,13,C(2,2,3));
+    rect(mx-14,y-38,3,11,C(2,2,3));
+    rect(mx-21,y-44,3,9,C(2,2,3));
+    rect(mx-27,y-47,9,3,C(2,2,3));
+    rect(mx-17,y-42,8,3,C(2,2,3));
+
+    rect(mx+1,y-31,3,13,C(2,2,3));
+    rect(mx+12,y-38,3,11,C(2,2,3));
+    rect(mx+19,y-44,3,9,C(2,2,3));
+    rect(mx+18,y-47,9,3,C(2,2,3));
+    rect(mx+14,y-42,8,3,C(2,2,3));
+
+    /* الرأس */
+    rect(mx-10,y-25,20,17,C(21,10,7));
+    rect(mx-6,y-21,12,12,C(25,17,12));
+
+    /* العينان */
+    rect(mx-8,y-20,5,5,C(31,31,28));
+    rect(mx+3,y-20,5,5,C(31,31,28));
+    pixel(mx-6,y-19,C(31,7,2));
+    pixel(mx+5,y-19,C(31,7,2));
+
+    /* الخطم والفم */
+    rect(mx-4,y-10,8,10,C(12,5,4));
+    rect(mx-3,y-9,6,6,C(1,1,1));
+
+    /* الرقبة والجسم */
+    rect(mx-6,y-6,12,12,C(18,8,6));
+    rect(mx-12,y+2,24,12,C(22,10,6));
+
+    /* الأرجل */
+    rect(mx-10,y+12+leg,5,9,C(9,5,4));
+    rect(mx+5,y+12-leg,5,9,C(9,5,4));
+    rect(mx-10,y+19+leg,6,4,C(2,2,2));
+    rect(mx+5,y+19-leg,6,4,C(2,2,2));
+}
+
+void drawKids(void)
+{
+    int i;
+
+    for(i=0;i<3;i++)
+    {
+        if(kids[i].alive)
+        {
+            int x=kids[i].x;
+            int y=kids[i].y;
+
+            rect(x-5,y-10,10,9,C(23,17,12));
+            rect(x-6,y,12,9,C(10,18,26));
+            rect(x-5,y+8,4,6,C(3,4,6));
+            rect(x+2,y+8,4,6,C(3,4,6));
         }
     }
 }
-static void draw_monster(int x,int y) {
-    int sx=x*TILE, sy=y*TILE;
-    rect(sx+2,sy+1,2,5,C_GREY); rect(sx+1,sy+1,4,2,C_GREY);
-    rect(sx+12,sy+1,2,5,C_GREY); rect(sx+11,sy+1,4,2,C_GREY);
-    rect(sx+4,sy+4,8,8,C_BLACK);
-    rect(sx+3,sy+3,10,6,C_DARK);
-    rect(sx+5,sy+6,2,2,C_RED); rect(sx+10,sy+6,2,2,C_RED);
-    rect(sx+5,sy+12,3,4,C_BLACK); rect(sx+9,sy+12,3,4,C_BLACK);
+
+void drawShelter(void)
+{
+    if(!shelter) return;
+
+    rect(25,30,35,22,C(18,10,5));
+    rect(21,25,43,7,C(25,13,5));
+    rect(38,39,9,13,C(5,5,4));
 }
-static void draw_fire(int x,int y) {
-    int sx=x*TILE, sy=y*TILE;
-    rect(sx+3,sy+11,10,3,C_BROWN);
-    rect(sx+5,sy+7,6,6,C_ORANGE);
-    rect(sx+7,sy+4,3,7,C_YELL);
-    pixel(sx+6,sy+8,C_RED); pixel(sx+10,sy+9,C_RED);
+
+void drawNumber(int x,int y,int n)
+{
+    /* أرقام صغيرة باستخدام 3x5 */
+    const unsigned char digits[10][5]={
+        {7,5,5,5,7},{2,6,2,2,7},
+        {7,1,7,4,7},{7,1,7,1,7},
+        {5,5,7,1,1},{7,4,7,1,7},
+        {7,4,7,5,7},{7,1,1,1,1},
+        {7,5,7,5,7},{7,5,7,1,7}
+    };
+
+    if(n<0)n=0;
+    if(n>9)n=9;
+
+    int a,b;
+
+    for(a=0;a<5;a++)
+        for(b=0;b<3;b++)
+            if(digits[n][a]&(4>>b))
+                pixel(x+b,y+a,C(31,31,31));
 }
-static void draw_house(int x,int y) {
-    int sx=x*TILE, sy=y*TILE;
-    rect(sx+2,sy+7,12,8,C_WOOD);
-    rect(sx+1,sy+5,14,3,C_BROWN);
-    rect(sx+5,sy+10,4,5,C_BLACK);
+
+void drawHUD(void)
+{
+    rect(3,3,250,23,C(1,3,4));
+
+    /* الخشب */
+    rect(8,9,7,8,C(24,13,5));
+    drawNumber(19,9,wood);
+
+    /* الأطفال */
+    rect(55,9,8,8,C(24,19,12));
+    drawNumber(68,9,rescued);
+
+    /* اليوم */
+    drawNumber(220,9,day/10);
+    drawNumber(226,9,day%10);
+
+    if(night)
+        rect(245,9,5,5,C(28,28,31));
+    else
+        rect(245,9,5,5,C(31,25,5));
 }
-static void draw_world(void) {
-    u16 bg = (ticks>=45) ? RGB(1,2,7) : C_GRASS;
-    clear_screen(bg);
-    for(int y=0;y<MAP_H;y++) for(int x=0;x<MAP_W;x++) {
-        int sx=x*TILE, sy=y*TILE;
-        char c=world[y][x];
-        if(c=='#') {
-            rect(sx,sy,TILE,TILE,C_TREE);
-            rect(sx+1,sy+1,14,14,C_DARK);
-        } else {
-            rect(sx,sy,TILE,TILE, ((x+y)%2) ? C_GRASS : C_GRASS2);
-            pixel(sx+2,sy+12,C_GRASS); pixel(sx+13,sy+4,C_GRASS);
-            if(c=='T') draw_tree(x,y);
-            if(c=='C') draw_child(x,y);
+
+void moveDeer(void)
+{
+    if(!night) return;
+
+    int dx=px-mx;
+    int dy=py-my;
+    int distance=abs(dx)+abs(dy);
+
+    int speed=1;
+
+    if(distance<85)
+        speed=2;
+
+    /* النار تبعد الغزال */
+    if(fireFuel>0 && distance<55)
+        return;
+
+    if(dx>0) mx+=speed;
+    if(dx<0) mx-=speed;
+
+    if(dy>0) my+=speed;
+    if(dy<0) my-=speed;
+
+    if(abs(mx-px)<13 && abs(my-py)<13)
+        gameOver=1;
+}
+
+void collectWood(void)
+{
+    int i;
+
+    for(i=0;i<7;i++)
+    {
+        if(trees[i].alive &&
+           nearObject(px,py,trees[i].x+10,trees[i].y+10,24))
+        {
+            trees[i].alive=0;
+            wood+=3;
+            return;
         }
     }
-    if(fire) draw_fire(2,2);
-    if(shelter) draw_house(3,2);
-    if(fence) {
-        rect(16,32,2,30,C_WOOD); rect(18,32,2,30,C_WOOD);
-        rect(20,32,2,30,C_WOOD); rect(22,32,2,30,C_WOOD);
-    }
-    if(ticks>=45 && alive) draw_monster(monsterX,monsterY);
-    draw_player(px,py);
 }
-static bool walkable(int x,int y) {
-    return x>0 && x<MAP_W-1 && y>0 && y<MAP_H-1 && world[y][x]!='#';
-}
-static int abs_i(int v){ return v<0 ? -v : v; }
 
-static void interact(void) {
-    if(world[py][px]=='T') {
-        world[py][px]='.'; wood+=2;
-        say("Chopped tree: +2 wood.");
-    } else if(world[py][px]=='C') {
-        world[py][px]='.'; rescued++;
-        snprintf(message,sizeof(message),"Child rescued! (%d/3)",rescued);
-    } else say("Nothing here. Stand on tree or child.");
-}
-static void build(void) {
-    if(!shelter && wood>=4) { wood-=4; shelter=1; say("Shelter built!"); }
-    else if(!fence && wood>=3) { wood-=3; fence=1; say("Fence built!"); }
-    else say("Need 4 wood for shelter, then 3 for fence.");
-}
-static void light_fire(void) {
-    if(!fire && wood>=3) { wood-=3; fire=1; say("Campfire is burning!"); }
-    else say(fire ? "Campfire already lit." : "Need 3 wood for fire.");
-}
-static void monster_update(void) {
-    if(ticks<45 || !alive) return;
-    if(fire && abs_i(px-2)+abs_i(py-2)<=2) return;
-    if(fence && px<=5 && py<=5) return;
-    if(monsterX<px) monsterX++; else if(monsterX>px) monsterX--;
-    if(monsterY<py) monsterY++; else if(monsterY>py) monsterY--;
-    if(monsterX==px && monsterY==py) {
-        if(weapon) { weapon=0; monsterX=13; monsterY=8; say("Spear drove it away!"); }
-        else { alive=0; say("Caught! Press START to retry."); }
+void rescueChild(void)
+{
+    int i;
+
+    for(i=0;i<3;i++)
+    {
+        if(kids[i].alive &&
+           nearObject(px,py,kids[i].x,kids[i].y,22))
+        {
+            kids[i].alive=0;
+            rescued++;
+            return;
+        }
     }
 }
-static void draw_ui(void) {
-    consoleClear();
-    iprintf("99 NIGHTS - PIXEL FOREST\n");
-    iprintf("Day %d | %s | Wood %d | Kids %d/3\n",day,ticks<45?"DAY":"NIGHT",wood,rescued);
-    iprintf("Fire:%s Shelter:%s Fence:%s\n",fire?"ON":"OFF",shelter?"YES":"NO",fence?"YES":"NO");
-    iprintf("Lamp:%s Spear:%s\n",lamp?"ON":"OFF",weapon?"YES":"NO");
-    iprintf("D-pad Move A Chop/Rescue\n");
-    iprintf("L Fire(3) Y Build B Spear(2)\n");
-    iprintf("X Lamp R Status START Retry\n");
-    iprintf("%s\n",message);
-    if(rescued>=3) iprintf("All children rescued! Survive!\n");
-}
-static void reset_game(void) {
-    memcpy(world, initial_world, sizeof(world));
-    px=2; py=2; wood=0; rescued=0; day=1; ticks=0;
-    fire=0; shelter=0; fence=0; weapon=0; lamp=1; alive=1;
-    monsterX=13; monsterY=8;
+
+void addFire(void)
+{
+    if(nearObject(px,py,campX,campY,35) && wood>0)
+    {
+        wood--;
+        fireFuel+=600;
+    }
 }
 
-int main(void) {
-    videoSetMode(MODE_5_2D | DISPLAY_BG2_ACTIVE);
-    vramSetBankA(VRAM_A_MAIN_BG);
-    REG_BG2CNT = BG_BMP16_256x256 | BG_BMP_BASE(0);
-    REG_BG2PA = 1 << 8;
-    REG_BG2PB = 0;
-    REG_BG2PC = 0;
-    REG_BG2PD = 1 << 8;
-    REG_BG2X = 0;
-    REG_BG2Y = 0;
+void buildShelter(void)
+{
+    if(nearObject(px,py,campX,campY,45) &&
+       wood>=4 && !shelter)
+    {
+        wood-=4;
+        shelter=1;
+    }
+}
 
-    consoleDemoInit();
-    keysSetRepeat(12, 6);
-    reset_game();
+int main(void)
+{
+    videoSetMode(MODE_FB0);
+    vramSetBankA(VRAM_A_LCD);
 
-    while(1) {
+    while(1)
+    {
         scanKeys();
-        int k = keysDownRepeat();
 
-        if(!alive && (k & KEY_START)) {
-            reset_game();
-            say("New journey. Rescue the children!");
+        int held=keysHeld();
+        int down=keysDown();
+
+        if(!gameOver)
+        {
+            /* حركة اللاعب */
+            if(held&KEY_LEFT) px-=2;
+            if(held&KEY_RIGHT) px+=2;
+            if(held&KEY_UP) py-=2;
+            if(held&KEY_DOWN) py+=2;
+
+            if(px<8)px=8;
+            if(px>248)px=248;
+            if(py<12)py=12;
+            if(py>178)py=178;
+
+            /* A: قطع الأشجار */
+            if(down&KEY_A)
+                collectWood();
+
+            /* B: إضافة الخشب للنار */
+            if(down&KEY_B)
+                addFire();
+
+            /* X: إنقاذ الأطفال */
+            if(down&KEY_X)
+                rescueChild();
+
+            /* Y: بناء المأوى */
+            if(down&KEY_Y)
+                buildShelter();
+
+            /* L: المصباح */
+            if(down&KEY_L)
+                flashlight=!flashlight;
+
+            /* دورة الليل والنهار */
+            timer++;
+
+            if(timer>=1800)
+            {
+                timer=0;
+                night=!night;
+
+                if(!night)
+                    day++;
+            }
+
+            /* استهلاك وقود النار */
+            if(fireFuel>0)
+                fireFuel--;
+
+            /* حركة الغزال */
+            moveDeer();
+
+            frame++;
         }
-        if(alive) {
-            int nx=px, ny=py;
-            if(k & KEY_UP) ny--;
-            if(k & KEY_DOWN) ny++;
-            if(k & KEY_LEFT) nx--;
-            if(k & KEY_RIGHT) nx++;
-            if(walkable(nx,ny)) { px=nx; py=ny; }
-            if(k & KEY_A) interact();
-            if(k & KEY_Y) build();
-            if(k & KEY_L) light_fire();
-            if((k & KEY_B) && !weapon && wood>=2) {
-                wood-=2; weapon=1; say("Wooden spear crafted!");
-            }
-            if(k & KEY_X) {
-                lamp=!lamp;
-                say(lamp ? "Flashlight ON" : "Flashlight OFF");
-            }
-            if(k & KEY_R) {
-                if(rescued==3) say("All children rescued!");
-                else snprintf(message,sizeof(message),"Keep searching: %d/3 rescued",rescued);
-            }
-            ticks++;
-            if(ticks>=90) { ticks=0; day++; monsterX=13; monsterY=8; }
-            if(ticks==45) say("NIGHT! The monster is hunting!");
-            if(ticks==0)  say("Morning. Gather wood and explore.");
-            monster_update();
-        }
-        draw_world();
-        draw_ui();
+
+        drawForest();
+        drawShelter();
+        drawKids();
+
+        if(night)
+            drawDeer();
+
+        drawPlayer();
+        drawHUD();
+
         swiWaitForVBlank();
+
+        if(gameOver)
+        {
+            clearScreen(C(1,2,3));
+            rect(45,65,166,45,C(20,3,3));
+            rect(55,75,146,25,C(3,3,3));
+
+            while(1)
+            {
+                scanKeys();
+
+                if(keysDown()&KEY_START)
+                {
+                    px=120; py=105;
+                    mx=30; my=35;
+                    wood=0;
+                    rescued=0;
+                    fireFuel=0;
+                    shelter=0;
+                    night=0;
+                    day=1;
+                    timer=0;
+                    gameOver=0;
+
+                    int i;
+                    for(i=0;i<7;i++)
+                        trees[i].alive=1;
+
+                    for(i=0;i<3;i++)
+                        kids[i].alive=1;
+
+                    break;
+                }
+
+                swiWaitForVBlank();
+            }
+        }
     }
+
     return 0;
 }
